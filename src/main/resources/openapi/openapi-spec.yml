@@ -1,11 +1,19 @@
 openapi: 3.0.0
 servers:
-  - description: API Marketplace api - mocking example api
-    url: https://virtserver.swaggerhub.com/HMCTS-DTS/api-hmcts-crime-template/1.0.0
+  - description: CP Crime Prosecution Case API
+    url: https://api-cp-crime-prosecution-case.net/{version}
+    variables:
+      version:
+        default: 1.0.0
+        description: API version; matches the spec info.version
 
 info:
-  title: API Marketplace api - example api
-  description: API Marketplace api - simple example
+  title: CP Crime Prosecution Case API
+  description: >-
+    Exposes prosecution case data for criminal cases on the Common Platform (CP).
+
+    Given a case URN, the API returns the defendants on the prosecution case and,
+    for each defendant, their offences and current status.
   version: 1.0.0
   contact:
     email: no-reply@hmcts.com
@@ -13,75 +21,217 @@ info:
     name: MIT
     url: 'https://opensource.org/licenses/MIT'
 
+security:
+  - oAuthJwt: []
+
+tags:
+  - name: prosecution-cases
+    description: Prosecution case data — defendants and their offences for a case
+
 paths:
-  /:
+  /prosecution-case/cases/{caseURN}:
     get:
-      description: Root endpoint
-      operationId: getRoot
+      summary: Get a prosecution case by URN
+      description: >-
+        Returns the defendants on a prosecution case for a given case URN. Each
+        defendant includes their full name and a list of offences; each offence
+        includes the offence code, title, and current status. A defendant may
+        have multiple offences. If the case has no defendants, an empty list is
+        returned. If the case does not exist, a not found response is returned.
+      operationId: getProsecutionCase
       tags:
-        - root
-
-      responses:
-        '200':
-          description: OK
-          content:
-            text/plain:
-              schema:
-                type: string
-                example: Hello
-
-  /example/{example_id}:
-    get:
-      description: Get example for example_id
-      operationId: getExampleByExampleId
-      tags:
-        - examples
+        - prosecution-cases
       parameters:
         - in: path
-          name: example_id
+          name: caseURN
           required: true
-          description: Unique id for the example - long
+          description: Unique Case URN identifying the prosecution case
           schema:
-            type: integer
-            format: int64
+            type: string
+          example: "20GD1234567"
       responses:
         '200':
-          description:  Examples found
+          description: Prosecution case found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ExampleResponse"
+                $ref: "#/components/schemas/ProsecutionCaseView"
+              examples:
+                prosecutionCase:
+                  summary: Case with defendants and offences
+                  value:
+                    defendants:
+                      - id: "30b83084-d2fe-4a70-bbd1-fae1dfdb4b95"
+                        name: "John Doe"
+                        offences:
+                          - id: "c4a1b2d3-e5f6-4789-9abc-0d1e2f3a4b5c"
+                            code: "TH68001"
+                            title: "Theft from a shop"
+                            status: "Convicted"
+                          - id: "d5b2c3e4-f6a7-489a-bcd0-1e2f3a4b5c6d"
+                            code: "CD80001"
+                            title: "Criminal damage"
+                            status: "Awaiting plea"
+                      - id: "df799de4-f4b9-4de0-8315-9262655c68d5"
+                        name: "Jane Doe"
+                        offences:
+                          - id: "e6c3d4f5-a7b8-490a-bcde-1f2a3b4c5d6e"
+                            code: "PU10001"
+                            title: "Public order offence"
+                            status: "Active"
+                empty:
+                  summary: Case exists but has no defendants
+                  value:
+                    defendants: []
         '400':
-          description: Bad input parameter
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/BadRequest"
+        '401':
+          $ref: "#/components/responses/Unauthorized"
+        '403':
+          $ref: "#/components/responses/Forbidden"
+        '404':
+          $ref: "#/components/responses/NotFound"
+        '500':
+          $ref: "#/components/responses/InternalServerError"
 
 components:
+  securitySchemes:
+    oAuthJwt:
+      type: oauth2
+      description: >-
+        OAuth 2.0 protection. Callers must present a valid JWT bearer access
+        token obtained via the client credentials flow.
+      flows:
+        clientCredentials:
+          tokenUrl: https://api-cp-crime-prosecution-case.net/oauth2/token
+          scopes:
+            prosecution-case.read: Read access to prosecution case data
+
+  responses:
+    BadRequest:
+      description: Bad input parameter
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: "BAD_REQUEST"
+            message: "The supplied case URN is not valid"
+            details:
+              parameter: "caseURN"
+            timestamp: "2026-06-22T11:33:22.794Z"
+            traceId: "b2f1c3d4e5f60718"
+    Unauthorized:
+      description: Authentication is missing or the access token is invalid
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: "UNAUTHORIZED"
+            message: "Access token is missing or invalid"
+            timestamp: "2026-06-22T11:33:22.794Z"
+            traceId: "c3a2b4d5e6f70819"
+    Forbidden:
+      description: The access token does not grant the required scope
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: "FORBIDDEN"
+            message: "The access token does not grant the required scope prosecution-case.read"
+            timestamp: "2026-06-22T11:33:22.794Z"
+            traceId: "d4b3c5e6f708192a"
+    NotFound:
+      description: The requested resource was not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: "NOT_FOUND"
+            message: "No case found for the supplied case URN"
+            details:
+              caseURN: "20GD1234567"
+            timestamp: "2026-06-22T11:33:22.794Z"
+            traceId: "e5c4d6f708192a3b"
+    InternalServerError:
+      description: An unexpected error occurred
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: "INTERNAL_SERVER_ERROR"
+            message: "An unexpected error occurred while processing the request"
+            timestamp: "2026-06-22T11:33:22.794Z"
+            traceId: "f6d5e708192a3b4c"
+
   schemas:
-    ExampleResponse:
-      description: Details of examples associated with the example id
+    ProsecutionCaseView:
+      description: Defendants on a prosecution case
       type: object
       properties:
-        exampleId:
-          description: Id of the example - long
-          type: integer
-          format: int64
-        exampleText:
-          description: Information associated with the example id
+        defendants:
+          description: Defendants on the case
+          type: array
+          items:
+            $ref: "#/components/schemas/DefendantView"
+
+    DefendantView:
+      description: A defendant on the prosecution case and their offences
+      type: object
+      properties:
+        id:
+          description: Unique identifier of the defendant
           type: string
-          example: "Some text"
+          format: uuid
+          example: "30b83084-d2fe-4a70-bbd1-fae1dfdb4b95"
+        name:
+          description: Full name of the defendant
+          type: string
+          example: "John Doe"
+        offences:
+          description: Offences associated with the defendant
+          type: array
+          items:
+            $ref: "#/components/schemas/OffenceView"
+
+    OffenceView:
+      description: A single offence and its current status
+      type: object
+      properties:
+        id:
+          description: Unique identifier of the offence
+          type: string
+          format: uuid
+          example: "c4a1b2d3-e5f6-4789-9abc-0d1e2f3a4b5c"
+        code:
+          description: Offence code
+          type: string
+          example: "TH68001"
+        title:
+          description: Offence title
+          type: string
+          example: "Theft from a shop"
+        status:
+          description: Current status of the offence
+          type: string
+          example: "Convicted"
 
     ErrorResponse:
+      description: Standard error response
       type: object
       properties:
         error:
           type: string
           description: Machine-readable error code
+          example: "NOT_FOUND"
         message:
           type: string
           description: Human-readable error message
+          example: "No case found for the supplied case URN"
         details:
           type: object
           additionalProperties: true
@@ -89,6 +239,8 @@ components:
         timestamp:
           type: string
           format: date-time
+          example: "2026-06-22T11:33:22.794Z"
         traceId:
           type: string
           description: Unique identifier for error tracing
+          example: "b2f1c3d4e5f60718"
